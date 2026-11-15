@@ -109,14 +109,14 @@ const clean=x=>{x=x&&typeof x==="object"?x:{};const n=v=>Number.isFinite(+v)?Mat
 let D;try{D=clean(JSON.parse(store.get(KEY)||"null")||def)}catch(e){D=clean(def)}
 const save=()=>{
   const json=JSON.stringify(D);
-  if(store.set(KEY,json))return;
+  if(store.set(KEY,json)){syncPush();return};
   // Kuota penuh: simpan tanpa gambar agar data tidak hilang
   const D2=JSON.parse(json);
   let n=0;
   D2.items.forEach(i=>{if(i.img){n++;i.img=""}});
   if(n&&store.set(KEY,JSON.stringify(D2))){
     D.items.forEach(i=>i.img=""); // sinkronkan ke memori
-    toast(`Penyimpanan penuh — ${n} gambar dihapus. Data teks aman. Ekspor cadangan di Pengaturan, lalu impor di browser baru.`);
+    toast(`Penyimpanan penuh � ${n} gambar dihapus. Data teks aman. Ekspor cadangan di Pengaturan, lalu impor di browser baru.`);
   }else{
     toast("Penyimpanan penuh atau diblokir. Ekspor cadangan di Pengaturan.");
   }
@@ -127,7 +127,27 @@ const sheet=h=>{$("#shc").innerHTML=h;$("#sh").classList.add("on")},close=()=>$(
 $("#sh").onclick=e=>{if(e.target.id==="sh")close()};
 const link=()=>location.href.split("#")[0];
 let cart={},pcat="all",filter="all",range="30",tab="beranda";
-const route=()=>{try{const h=location.hash.replace("#","");if(h.startsWith("admin")){tab=h.split("/")[1]||"beranda";if(!tabs[tab])tab="beranda";admin()}else if(h.startsWith("o."))view(h);else pub()}catch(e){console.error(e);$("#app").innerHTML='<div class="adm"><div class="card"><h3>Terjadi kendala tampilan</h3><p class="mu">Data kamu aman. Muat ulang halaman untuk mencoba lagi.</p><button class="btn p" onclick="location.hash=\'\';location.reload()">Muat ulang</button></div></div>'}};
+const SYNC_PATH="data/hroem-vnla.json";
+const SYNC_REPO="Dilba12/HroemVNLA";
+async function syncPull(){const t=adm();if(!t)return;
+  try{const r=await fetch("https://api.github.com/repos/"+SYNC_REPO+"/contents/"+SYNC_PATH+"?t="+Date.now());
+    if(r.status===404)return;
+    if(!r.ok)return;
+    const j=await r.json();const b64=j.content.replace(/\s/g,"");const json=decodeURIComponent(escape(atob(b64)));
+    const remote=clean(JSON.parse(json));
+    const local=JSON.stringify(D).length;const rem=JSON.stringify(remote).length;
+    if(local>=rem)return; // local lebih baru, tidak perlu pull
+    D=remote;save();toast("Data diimpor dari GitHub (sinkron)")}
+  catch(e){console.error(e)}}
+async function syncPush(){const t=adm();if(!t)return toast("Isi token admin di Pengaturan dulu");
+  try{const json=JSON.stringify(D);
+    const get=await fetch("https://api.github.com/repos/"+SYNC_REPO+"/contents/"+SYNC_PATH+"?t="+Date.now());
+    let sha=null;if(get.ok){const j=await get.json();sha=j.sha}
+    const put=await fetch("https://api.github.com/repos/"+SYNC_REPO+"/contents/"+SYNC_PATH,{method:"PUT",headers:{Authorization:"Bearer "+t,"Content-Type":"application/json"},body:JSON.stringify({message:"Sync data "+new Date().toISOString(),content:btoa(unescape(encodeURIComponent(json))),sha:sha||undefined})});
+    if(!put.ok)throw new Error("Gagal simpan ke GitHub");
+    toast("Data disimpan ke GitHub — HP bisa mengaksesnya")}
+  catch(e){toast("Gagal sinkron: "+e.message)}}
+const route=()=>{try{syncPull();const h=location.hash.replace("#","");if(h.startsWith("admin")){tab=h.split("/")[1]||"beranda";if(!tabs[tab])tab="beranda";admin()}else if(h.startsWith("o."))view(h);else pub()}catch(e){console.error(e);$("#app").innerHTML='<div class="adm"><div class="card"><h3>Terjadi kendala tampilan</h3><p class="mu">Data kamu aman. Muat ulang halaman untuk mencoba lagi.</p><button class="btn p" onclick="location.hash=\'\';location.reload()">Muat ulang</button></div></div>'}};
 addEventListener("hashchange",route);
 addEventListener("storage",e=>{if(e.key===KEY&&e.newValue&&!$("#sh").classList.contains("on")&&!/INPUT|TEXTAREA|SELECT/.test((document.activeElement||{}).tagName||"")){try{D=clean(JSON.parse(e.newValue));route()}catch(x){}}});
 addEventListener("keydown",e=>{if(e.key==="Escape")close()});
@@ -135,7 +155,7 @@ addEventListener("keydown",e=>{if(e.key==="Escape")close()});
 /* ===== PUBLIK ===== */
 let pq="";
 function pubRows(){const q=pq.trim().toLowerCase(),f=D.items.filter(i=>i.on&&(pcat==="all"||(i.cat||"Menu")===pcat)&&(!q||(i.name+" "+i.desc+" "+i.cat).toLowerCase().includes(q))),cs=[...new Set(f.map(i=>i.cat||"Menu"))];
- return cs.map(c=>`<div class="cg">${E(c)}</div>`+f.filter(i=>(i.cat||"Menu")===c).map(prow).join("")).join("")||`<p class="mu" style="padding:16px">${q?"Tidak ada produk yang cocok dengan “"+E(pq)+"”.":"Belum ada produk."}</p>`}
+ return cs.map(c=>`<div class="cg">${E(c)}</div>`+f.filter(i=>(i.cat||"Menu")===c).map(prow).join("")).join("")||`<p class="mu" style="padding:16px">${q?"Tidak ada produk yang cocok dengan “"+E(pq)+"„.":"Belum ada produk."}</p>`}
 function prow(i){const out=i.qty!==null&&i.qty<=0,c=cart[i.id]||0;
  return`<div class="pr"><div class="im">${i.img?`<img class="thumb" loading="lazy" decoding="async" src="${i.img}" alt="${E(i.name)}" onerror="this.classList.add('broken');this.onerror=null" onclick="zoom(${i.id})">`:'<div class="thumb"></div>'}</div><div class="nm"><b>${E(i.name)}</b><span class="mu">${E(i.desc)}</span></div><div class="st mu">${i.qty===null?"Tersedia":out?"Habis":"Sisa "+i.qty}</div><div class="pc">${rp(i.price)}</div><div class="qt">${out?'<span class="tag off">Habis</span>':c?`<div class="step"><button aria-label="Kurangi" onclick="chg(${i.id},-1)">−</button><b style="min-width:20px;text-align:center">${c}</b><button aria-label="Tambah" onclick="chg(${i.id},1)">+</button></div>`:`<button class="btn p s" onclick="chg(${i.id},1)">Tambah</button>`}</div></div>`}
 function opanel(){const L=D.items.filter(i=>i.on&&cart[i.id]),t=L.reduce((a,i)=>a+cart[i.id]*i.price,0),n=L.reduce((a,i)=>a+cart[i.id],0);
@@ -267,7 +287,7 @@ function dlqr(){const c=$("#qr canvas"),i=$("#qr img"),a=document.createElement(
 
 let lcat="all";function katCard(){const m={};D.items.forEach(i=>{const c=i.cat||"";m[c]=(m[c]||0)+1});const ks=Object.keys(m).sort();if(lcat!=="all"&&!(lcat in m))lcat="all";
  return `<div class="card" style="margin:12px 0"><div class="row sp"><h3>Kategori</h3><span class="tag">${ks.filter(k=>k).length} kategori</span></div><div class="chips">${[["all","Semua",D.items.length],...ks.map(k=>[k,k||"Tanpa kategori",m[k]])].map(([k,l,n])=>`<button class="${lcat===k?"on":""}" data-c="${E(k)}" onclick="lcat=this.dataset.c;lapak()">${E(l)} ${n}</button>`).join("")}</div><p class="mu" style="margin:0">Tap kategori untuk memfilter daftar item. Kategori baru otomatis dibuat saat kamu mengisi kolom Kategori pada item.</p></div>`}
-function lapak(){$("#v").innerHTML=`<div class="row sp"><h2>Lapak</h2><button class="btn p" onclick="itemForm()">+ Tambah item</button></div><p class="mu">${D.items.length} item · atur kuota agar otomatis “Habis”.</p>
+function lapak(){$("#v").innerHTML=`<div class="row sp"><h2>Lapak</h2><button class="btn p" onclick="itemForm()">+ Tambah item</button></div><p class="mu">${D.items.length} item · atur kuota agar otomatis “Habis„.</p>
  ${katCard()}<div class="card">${D.items.filter(i=>lcat==="all"||(i.cat||"")===lcat).map(i=>`<div class="item">${i.img?`<img class="thumb" loading="lazy" decoding="async" src="${i.img}" alt="" onerror="this.classList.add('broken');this.onerror=null">`:'<div class="thumb"></div>'}<div style="flex:1"><b>${E(i.name)}</b><span class="mu">${E(i.cat||"Tanpa kategori")} · ${rp(i.price)} · ${i.qty===null?"tanpa batas":"kuota "+i.qty}</span></div><div class="row"><span class="tag ${i.on?"":"off"}">${i.on?"Tampil":"Sembunyi"}</span><button class="btn s" onclick="itemForm(${i.id})">Sunting</button></div></div>`).join("")||'<p class="mu">Belum ada item.</p>'}</div>`}
 function itemForm(id){const i=D.items.find(x=>x.id===id)||{name:"",price:"",desc:"",qty:null,cat:"",on:true};_img=i.img||"";
  sheet(`<div class="row sp"><h2>${id?"Sunting":"Tambah"} item</h2><button class="btn s" onclick="close_()">✕</button></div>
@@ -362,8 +382,7 @@ function pengaturan(){const s=D.shop,f=(k,l,t="text")=>`<label>${l}</label>${t==
  <label>Token admin (ADMIN_TOKEN di server)</label><input id="adt" type="password" autocomplete="off" value="${E(adm())}">
  <div class="row wrap" style="margin-top:12px"><button class="btn p" onclick="saveAdm()">Simpan token</button><button class="btn" onclick="srvSync()">Sinkronkan katalog &amp; tarik pesanan</button></div>
  <p class="mu" style="margin:8px 0 0">Sinkron menarik pesanan yang sudah dibayar, lalu mengirim katalog (produk, harga, stok) ke server. Pembeli melihat katalog dari server dan total dihitung di server.</p></div>
- <div class="card" style="margin-top:12px"><h3> Gambar & sinkronisasi</h3><p class="mu">Gambar disimpan sebagai base64 di localStorage browser ini. HP/desktop yang berbeda<strong> tidak</strong> melihat gambar yang sama.</p><p class="mu"><b>Solusi:</b> Gunakan <b>URL gambar</b> (hosting luar seperti Imgur, GitHub repo, Cloudinary). Di Lapak → edit item → kolom "Atau tempel URL gambar" → tempel URL https://.... Semua perangkat akan melihat gambar yang sama. Setelah semua gambar diubah ke URL, gambar base64 bisa dihapus (centang item → Hapus foto).</p><p class="mu">Buka halaman ini lewat URL publik (seperti GitHub Pages) agar HP bisa mengaksesnya. Jika file diakses langsung dari komputer (file://...), HP tidak bisa.</p></div>
-  <div class="card" style="margin-top:12px"><h3>Data</h3><p class="mu">Data tersimpan di browser ini. Ekspor sebagai cadangan sebelum ganti perangkat.</p><div class="row wrap"><button class="btn" onclick="exp()">Ekspor cadangan</button><label class="btn" style="margin:0">Impor<input type="file" accept=".json" hidden onchange="imp(this.files[0])"></label><button class="btn d" onclick="ask('Hapus semua data?','Ya, hapus',()=>{store.del(KEY);store.del(KEY+"_c");D=clean(def);cart={};route()})">Reset</button></div></div>`}
+ <div class="card" style="margin-top:12px"><h3> Sinkronisasi GitHub (semua perangkat)</h3><p class="mu">Data (produk, gambar URL, toko) disimpan ke file JSON di repo GitHub. HP/desktop yang lain mengambil data yang sama.</p><div class="row wrap"><button class="btn p" onclick="syncPush()"> Simpan ke GitHub</button><button class="btn" onclick="syncPull()">Ambil dari GitHub</button></div><p class="mu" style="margin:8px 0 0">Cara pakai: 1) Isi token admin di bawah. 2) Di desktop, atur data lalu simpan ke GitHub. 3) HP buka https://dilba12.github.io/HroemVNLA � data otomatis diimpor dari GitHub.</p></div><div class="card" style="margin-top:12px"><h3> Gambar</h3><p class="mu">Gunakan <b>URL gambar</b> atau tombol <b>Upload GitHub</b> di form edit item. Gambar base64 tidak sinkron antar perangkat.</p></div>
 function lpCard(s){const L=s.lp||{},v=(a,i,k)=>E((a&&a[i]&&a[i][k])||""),P=(a,i,k)=>E(a[i][k]);
  const f=(id,l,val,ph,tag)=>`<label>${l}</label>${tag==="a"?`<textarea id="${id}" rows="2" placeholder="${ph}">${val}</textarea>`:`<input id="${id}" value="${val}" placeholder="${ph}">`}`;
  return `<div class="card" style="margin-top:12px"><h3>Landing page</h3><p class="mu">Teks di bagian atas halaman pembeli. Kolom yang dikosongkan memakai teks bawaan (abu-abu). Isi keunggulan produkmu sendiri agar halaman lebih menjual.</p>
@@ -8102,7 +8121,7 @@ route();srvInit();
 9433033|OMUKIA
 9433040|SINAK
 9433041|SINAK BARAT
-9433042|MAGEÁBUME
+9433042|MAGEÞBUME
 9433043|YUGUMUAK
 9433050|POGOMA
 9433051|KEMBRU
